@@ -8,11 +8,10 @@ import numpy as np
 
 
 """
-    A very simple wrapper for mysql (mysql-connector)
+    A very simple wrapper for mysql (mysql-connector) with some added Pandas integration functionalities.
 
     Methods:
         connect() - connects to mysql server
-        getTable() - get all rows, return as pandas DataTrame
         getOne() - get a single row
         getAll() - get all rows
         lastId() - get the last insert id
@@ -25,6 +24,15 @@ import numpy as np
         query()  - run a raw sql query
         commit() - commits a transaction for transactional engines
         leftJoin() - do an inner left join query and get results
+
+        pandas based methods:
+
+        createTable() - creates a Table using a DataFrame as the input
+        insertTable() - updates a Table using a DataFrame as the input
+        updateTable() - updates a Table using a DataFrame as the input, adds missing columns and changes mismatched column types.
+        createOrInsertTable() - creates a Table if it doesn´t exists, updates the records if it does
+        createOrUpdateTable() - creates a Table if it doesn´t exists, updates the records if it does, adds missing columns and chages mismatched column types
+        getTable() - get all rows, return as DataTrame       
 
     License: GNU GPLv2
 
@@ -125,29 +133,7 @@ class MysqlWrap:
 
         return rows
     
-    def getTable(self, table=None, fields='*', where=None, order=None, limit=None) -> pd.DataFrame:
-        """Get all results and return as a DataFrame
 
-            table = (str) table_name
-            fields = (field1, field2 ...) list of fields to select
-            where = ("parameterizedstatement", [parameters])
-                    eg: ("id=%s and name=%s", [1, "test"])
-            order = [field, ASC|DESC]
-            limit = [from, to]
-        """
-        cur = self._select(table, fields, where, order, limit)
-        column_names = cur.column_names
-
-        records = [dict(zip(column_names, record)) for record in cur.fetchall()]
-
-        res_dataFrame = pd.DataFrame.from_dict(records)
-
-        # dealing with Timestamps
-        for column in res_dataFrame.select_dtypes(include = [np.datetime64, 'datetime' , 'datetime64']):
-            pd.to_datetime(res_dataFrame[column], format = "%Y/%m/%d")
-            res_dataFrame[column].fillna(pd.Timedelta(days=0))
-
-        return res_dataFrame
 
     def lastId(self):
         """Get the last insert id"""
@@ -217,10 +203,10 @@ class MysqlWrap:
             sql, values + where[1] if where and len(where) > 1 else values
         ).rowcount
 
-    def insertOrUpdate(self, table, data, keys):
+    def insertOrUpdate(self, table, data, key_field):
         insert_data = data.copy()
 
-        data = {k: data[k] for k in data if k not in keys}
+        data = {k: data[k] for k in data if k not in key_field}
 
         insert = self._serialize_insert(insert_data)
         update = self._serialize_update(data)
@@ -228,6 +214,9 @@ class MysqlWrap:
         sql = "INSERT INTO %s (%s) VALUES(%s) ON DUPLICATE KEY UPDATE %s" % (table, insert[0], insert[1], update)
 
         return self.query(sql, tuple(insert_data.values()) + tuple(data.values())).rowcount
+
+
+
 
     def delete(self, table, where=None):
         """Delete rows based on a where condition"""
@@ -284,6 +273,16 @@ class MysqlWrap:
         self.conn.close()
 
         # ===
+
+    def _table_exist(self, table : str):
+        sql = "SHOW TABLES LIKE '{0}'".format(table)
+        self.cur.execute(sql)
+        if self.cur.fetchone():
+            return True
+        return False
+    
+
+
 
     def _serialize_insert(self, data):
         """Format insert dict values into strings"""
@@ -369,3 +368,74 @@ class MysqlWrap:
 
     def __exit__(self, type, value, traceback):
         self.end()
+
+# PANDAS METHODS
+
+    DTypeTranslation  = {
+    "VARCHAR" : {'string'},
+    "TIMESTAMP" : { np.datetime64, 'datetime' , 'datetime64', 'datetime64[ns, <tz>]'},
+    "FLOAT" : {'Float32', 'Float64'},
+    "INT" : {'Int8', 'Int16', 'Int32', 'Int64', 'UInt8', 'UInt16', 'UInt32', 'UInt64'},
+    "TINYINT" : {'boolean'},
+}
+    
+    def _translate_dtype(_str):
+
+        try : 
+            yield next([key for key, value in DTypeTranslation.items() if _str in value])
+        except:
+            yield "VARCHAR"
+
+    def _serialize_field_create(self, data : pd.DataFrame):
+
+        formats = list(data.dtypes)
+        names = list(data.columns.values)
+
+        return [names, formats]
+
+    """createTable() - creates a Table using a DataFrame as the input
+        insertTable() - updates a Table using a DataFrame as the input
+        updateTable() - updates a Table using a DataFrame as the input, adds missing columns and changes mismatched column types.
+        createOrInsertTable() - creates a Table if it doesn´t exists, updates the records if it does
+        createOrUpdateTable() - creates a Table if it doesn´t exists, updates the records if it does, adds missing columns and chages mismatched column types
+        getTable() - get all rows, return as DataTrame   
+        """
+    
+    def getTable(self, table=None, fields='*', where=None, order=None, limit=None) -> pd.DataFrame:
+        """Get all results and return as a DataFrame
+
+            table = (str) table_name
+            fields = (field1, field2 ...) list of fields to select
+            where = ("parameterizedstatement", [parameters])
+                    eg: ("id=%s and name=%s", [1, "test"])
+            order = [field, ASC|DESC]
+            limit = [from, to]
+        """
+        cur = self._select(table, fields, where, order, limit)
+        column_names = cur.column_names
+
+        records = [dict(zip(column_names, record)) for record in cur.fetchall()]
+
+        res_dataFrame = pd.DataFrame.from_dict(records)
+
+        # dealing with Timestamps
+        for column in res_dataFrame.select_dtypes(include = [np.datetime64, 'datetime' , 'datetime64']):
+            pd.to_datetime(res_dataFrame[column], format = "%Y/%m/%d")
+            res_dataFrame[column].fillna(pd.Timedelta(days=0))
+
+        return res_dataFrame
+    
+    def createTable(self, table, data : pd.DataFrame, key_field : str = None):
+        # check if table exists
+        if self._table_exist(table):
+            print("table {0} already exists in the database".format(table))
+            return 
+        # extract datatypes from pandas <- how to understand that some columns might be jsons?
+        # map datatypes to mysql datatypes
+        # serialize data from dataframe
+        sql = "CREATE TABLE {0} (name VARCHAR(255), address VARCHAR(255))".format(table)
+        # create table
+        pass
+
+    def insertDataFrame(self, table, data : pd.DataFrame):        
+        return self.insertBatch(table, data.to_dict(orient="records"))
