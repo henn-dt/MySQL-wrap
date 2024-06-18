@@ -2,9 +2,12 @@ import mysql.connector as mysql
 from collections import namedtuple
 from itertools import repeat
 from typing import Any, Optional, Set, Callable, Iterator
+import json
 
 import pandas as pd
-import numpy as np
+import numpy
+
+np = numpy
 
 
 """
@@ -46,6 +49,33 @@ import numpy as np
     Emiliano Lupo
     June 2024
 """
+DTypeDict  = {
+    "VARCHAR" : ['string'],
+    "DATETIME" : [ np.datetime64, 'datetime' , 'datetime64', 'datetime64[ns, <tz>]'],
+    "FLOAT" : ['float32', 'float64', np.float64, 'numpy.float64', numpy.float64],
+    "INT" : ['int8', 'int16', 'int32', 'int64', 'uint8', 'uint16', 'uint32', 'uint64'],
+    "TINYINT" : ['boolean'],
+    }
+
+def getDataTypefromDType(DType : str) -> str:
+    if isinstance(DType, str):
+        DType = DType.lower()
+
+    for datatype, dtypes in DTypeDict.items():
+        if DType in dtypes:
+            return datatype
+    return "VARCHAR"
+
+DataTypeLength = {
+    "VARCHAR" : "255",
+    "FLOAT" : "10,5",
+    "TINYINT" : "1"
+}
+
+
+def setMySqlFieldName(name : str) -> str:
+    return ''.join(e for e in name if e.isalnum())
+
 
 class MysqlWrap:
     conn = None
@@ -371,22 +401,60 @@ class MysqlWrap:
 
 # PANDAS METHODS
 
-    DTypeTranslation  = {
-    "VARCHAR" : {'string'},
-    "TIMESTAMP" : { np.datetime64, 'datetime' , 'datetime64', 'datetime64[ns, <tz>]'},
-    "FLOAT" : {'Float32', 'Float64'},
-    "INT" : {'Int8', 'Int16', 'Int32', 'Int64', 'UInt8', 'UInt16', 'UInt32', 'UInt64'},
-    "TINYINT" : {'boolean'},
-}
     
-    def _translate_dtype(_str):
-
+    def _map_dtype(self, _dtype : str):
         try : 
-            yield next([key for key, value in DTypeTranslation.items() if _str in value])
+            return next([key for key, value in DTypeDict.items() if str(_dtype).lower() in value])
         except:
-            yield "VARCHAR"
+            return "VARCHAR"   
 
-    def _serialize_field_create(self, data : pd.DataFrame):
+    def _is_json(self, _varchar : str):
+        if not _varchar.startswith(("{", "[")):
+            return False
+        try:
+            json.loads(_varchar)
+        except ValueError as e:
+            return False
+        return True
+    
+    def _column_max_length(self, _column):
+        return _column.str.len().max()
+
+    def _column_max_decimals(self, _column):
+        return _column.astype('str').str.split('.', expand=True).apply(lambda x:len(x)).max()
+
+    """ 
+    (name VARCHAR(255), address VARCHAR(255)
+
+    """            
+    def _serialize_datatypes(self, data : pd.DataFrame, key_field : str = None):
+        key_flag = False
+        datatypes = []
+
+        if not key_field or not len(key_field) > 0:
+            datatypes.append("INT NOT NULL PRIMARY KEY")
+            key_flag = True
+
+        for items, dtype in zip(data.items(), list(data.dtypes)):
+            key = items[0]
+            column = items[1]
+            datatype = getDataTypefromDType(str(dtype))
+            if datatype == "VARCHAR" and self._is_json(column[column.first_valid_index()]):
+                datatype = "JSON"
+            if datatype in DataTypeLength.keys():
+                datatype += "(%s)" % (DataTypeLength[datatype])
+            if not key_flag and key == key_field:
+                key_field = True
+                datatype += " NOT NULL PRIMARY KEY"
+            else:
+                datatype += " NULL"
+            
+            datatypes.append(datatype)
+        
+        return datatypes
+    
+
+
 
         formats = list(data.dtypes)
         names = list(data.columns.values)
@@ -432,10 +500,16 @@ class MysqlWrap:
             return 
         # extract datatypes from pandas <- how to understand that some columns might be jsons?
         # map datatypes to mysql datatypes
+        keys = [setMySqlFieldName(key)  for key in  data.keys()]
+        if not key_field or not len(key_field) > 0:
+            keys = ["id "] + keys
+        datatypes = self._serialize_datatypes(data, key_field)
+
         # serialize data from dataframe
-        sql = "CREATE TABLE {0} (name VARCHAR(255), address VARCHAR(255))".format(table)
+        sql = "CREATE TABLE {0} ({1})".format(table, ",".join([" ".join((key, datatype)) for key, datatype in zip(keys, datatypes)]))
         # create table
-        pass
+
+        return self.query(sql)
 
     def insertDataFrame(self, table, data : pd.DataFrame):        
         return self.insertBatch(table, data.to_dict(orient="records"))
