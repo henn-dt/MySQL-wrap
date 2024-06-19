@@ -422,18 +422,11 @@ class MysqlWrap:
 
     def _column_max_decimals(self, _column):
         return _column.astype('str').str.split('.', expand=True).apply(lambda x:len(x)).max()
-
-    """ 
-    (name VARCHAR(255), address VARCHAR(255)
-
-    """            
+    
+      
     def _serialize_datatypes(self, data : pd.DataFrame, key_field : str = None):
         key_flag = False
         datatypes = []
-
-        if not key_field or not len(key_field) > 0:
-            datatypes.append("INT NOT NULL PRIMARY KEY")
-            key_flag = True
 
         for items, dtype in zip(data.items(), list(data.dtypes)):
             key = items[0]
@@ -452,22 +445,16 @@ class MysqlWrap:
             datatypes.append(datatype)
         
         return datatypes
-    
 
-
-
-        formats = list(data.dtypes)
-        names = list(data.columns.values)
-
-        return [names, formats]
-
-    """createTable() - creates a Table using a DataFrame as the input
-        insertTable() - updates a Table using a DataFrame as the input
-        updateTable() - updates a Table using a DataFrame as the input, adds missing columns and changes mismatched column types.
-        createOrInsertTable() - creates a Table if it doesn´t exists, updates the records if it does
-        createOrUpdateTable() - creates a Table if it doesn´t exists, updates the records if it does, adds missing columns and chages mismatched column types
-        getTable() - get all rows, return as DataTrame   
-        """
+    """
+    createTable() - creates a Table using a DataFrame as the input
+    syncColumns() - adds missing columns and changes mismatched column types.
+    insertTable() - insert data in a Table using a DataFrame as the input, optionally adds missing columns and changes mismatched column types.
+    updateTable() - updates a Table using a DataFrame as the input, optionally updates the columns.
+    createOrInsertTable() - creates a Table if it doesn´t exists, insert data if it does, optionally updates the columns
+    createOrUpdateTable() - creates a Table if it doesn´t exists, updates the records if it does, optionally updates the columns
+    getTable() - get all rows, return as DataTrame   
+    """
     
     def getTable(self, table=None, fields='*', where=None, order=None, limit=None) -> pd.DataFrame:
         """Get all results and return as a DataFrame
@@ -498,18 +485,30 @@ class MysqlWrap:
         if self._table_exist(table):
             print("table {0} already exists in the database".format(table))
             return 
+
         # extract datatypes from pandas <- how to understand that some columns might be jsons?
-        # map datatypes to mysql datatypes
+        # map keys and datatypes to mysql datatypes
         keys = [setMySqlFieldName(key)  for key in  data.keys()]
+        datatypes = self._serialize_datatypes(data, key_field)
+
+        # add an id field if the key_field parameter is empty
         if not key_field or not len(key_field) > 0:
             keys = ["id "] + keys
-        datatypes = self._serialize_datatypes(data, key_field)
+            datatypes = ["INT NOT NULL PRIMARY KEY"] + datatypes
 
         # serialize data from dataframe
         sql = "CREATE TABLE {0} ({1})".format(table, ",".join([" ".join((key, datatype)) for key, datatype in zip(keys, datatypes)]))
-        # create table
 
+        # create table
         return self.query(sql)
+    
+    def syncColumns(self, table, data : pd.DataFrame):
+         
+        keys = data.keys()
+        datatypes = self._serialize_datatypes(data)
+        col_input = { setMySqlFieldName(key) : str(datatype).split()[0] for key, datatype in zip(keys, datatypes) }
+
+
 
     def insertDataFrame(self, table, data : pd.DataFrame):        
         return self.insertBatch(table, data.to_dict(orient="records"))

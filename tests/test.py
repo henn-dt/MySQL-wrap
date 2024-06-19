@@ -60,5 +60,12 @@ for dtype in list(data.dtypes):
     logger.info(getDataTypefromDType(dtype))
 
  """
-logger.info(testdb.createTable("testcreate" , data))
+# logger.info(testdb.createTable("testcreate" , data))
 
+sql = "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = 'column_name' "
+
+sql = "describe testcreate"
+
+columns = testdb.query(sql)
+
+print(testdb.cur)
