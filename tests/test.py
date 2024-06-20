@@ -64,8 +64,18 @@ for dtype in list(data.dtypes):
 
 sql = "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = 'column_name' "
 
-sql = "describe testcreate"
+sql = "explain testcreate"
 
-columns = testdb.query(sql)
-
+#columns = testdb.query(sql)
+""" 
+print(testdb)
 print(testdb.cur)
+print(testdb.cur.fetchall())
+ """
+
+""" 
+print(testdb.describe("testcreate"))
+
+print(testdb.syncColumns("testcreate", data)) """
+
+testdb.insertDataFrame("testcreate", data)

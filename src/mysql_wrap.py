@@ -244,6 +244,19 @@ class MysqlWrap:
         sql = "INSERT INTO %s (%s) VALUES(%s) ON DUPLICATE KEY UPDATE %s" % (table, insert[0], insert[1], update)
 
         return self.query(sql, tuple(insert_data.values()) + tuple(data.values())).rowcount
+    
+    def describe(self, table: str):
+
+        sql = "EXPLAIN "+ table
+
+        cursor = self.query(sql).fetchall()
+
+        return {field[0] : {"Field" : field[0],
+                "Type" : field[1].decode().upper(),
+                "Null" : field[2],
+                "Key" : field[3],
+                "Default" : field[4],
+                "Extra" : field[5]} for field in cursor}
 
 
 
@@ -502,13 +515,60 @@ class MysqlWrap:
         # create table
         return self.query(sql)
     
-    def syncColumns(self, table, data : pd.DataFrame):
+    def syncColumns(self, table, data : pd.DataFrame, key_field : str = None):
+        # todo: check for primary keys, and sync primary keys. 
          
         keys = data.keys()
         datatypes = self._serialize_datatypes(data)
-        col_input = { setMySqlFieldName(key) : str(datatype).split()[0] for key, datatype in zip(keys, datatypes) }
+
+        source_columns = { setMySqlFieldName(key) : 
+                     {"Field" : setMySqlFieldName(key),
+                      "Type" : str(datatype).split()[0],
+                       "Null" : "NO" if key == key_field else "YES",
+                        "Key" :  "PRI" if key == key_field else "",
+                        "Default" : None,
+                        "Extra" : ""}
+                        for key, datatype in zip(keys, datatypes) }
+        
+        dest_columns = self.describe(table)
+
+        # check if all fields are included and with the same settings. 
+        if all(field in dest_columns for field in source_columns):
+            print("all columns in source are in the destination")
+            return
+        
+        sql = "ALTER TABLE {0} ".format(table)
+
+        # adds missing keys
+        missing_keys = list(set(source_columns.keys()) - set(dest_columns.keys()))
+        if len(missing_keys) > 0:
+            sql += " , ".join(["ADD COLUMN {0} {1} NULL".format(key, 
+                                                           source_columns[key]["Type"],
+                                                           ) for key in missing_keys])
+            
+        # changes mismatched datatypes
+        mismatched_fields = [key for key 
+                             in list(set(dest_columns.keys()).intersection(set(source_columns.keys() )))
+                             if source_columns[key]["Type"] != dest_columns[key]["Type"]]
+
+        if len(mismatched_fields) > 0:
+            sql += " , ".join(["CHANGE COLUMN {0} {0} {1} NULL".format(key, source_columns[key]["Type"]) for key in mismatched_fields])
+
+        return self.query(sql)
 
 
+    def insertDataFrame(self, table, data : pd.DataFrame, updateColumns : bool = False):
+        if updateColumns:
+            self.syncColumns(table, data)
 
-    def insertDataFrame(self, table, data : pd.DataFrame):        
-        return self.insertBatch(table, data.to_dict(orient="records"))
+        records = data.to_dict(orient='records')
+
+        #flatten records, keep the order
+        data = [ { setMySqlFieldName(key) : value  for key, value in record.items()} for record in records]
+
+        
+
+#        data = [ {setMySqlFieldName(key) : value} for key, value in [ (record.items()) for record in records ] ]
+
+                
+        return self.insertBatch(table, data)
