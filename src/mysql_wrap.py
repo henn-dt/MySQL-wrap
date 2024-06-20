@@ -560,11 +560,21 @@ class MysqlWrap:
     def insertDataFrame(self, table, data : pd.DataFrame, updateColumns : bool = False):
         if updateColumns:
             self.syncColumns(table, data)
-
         records = data.to_dict(orient='records')
+        data = []
+        for record in records:
+            data += [{key : value} for key, value in record.items()]
+
+        print(data)
+
+        """ 
+        records = [record data.to_dict(orient='records')]
 
         #flatten records, keep the order
-        data = [ { setMySqlFieldName(key) : value  for key, value in record.items()} for record in records]
+
+        data = [ {key : value} for key, value in record.items() for record in records ] 
+ """
+#        data = [ { setMySqlFieldName(key) : value  for key, value in record.items()} for record in records]
 
         
 
