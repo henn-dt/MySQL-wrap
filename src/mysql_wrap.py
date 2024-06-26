@@ -205,6 +205,8 @@ class MysqlWrap:
 
         sql = "INSERT INTO %s (%s) VALUES(%s)" % (table, query[0], query[1])
 
+        print(sql)
+
         return self.query(sql, tuple(data.values())).rowcount
 
     def insertBatch(self, table, data):
@@ -451,7 +453,7 @@ class MysqlWrap:
                 datatype += "(%s)" % (DataTypeLength[datatype])
             if not key_flag and key == key_field:
                 key_field = True
-                datatype += " NOT NULL PRIMARY KEY"
+                datatype += " NOT NULL PRIMARY KEY AUTO_INCREMENT"
             else:
                 datatype += " NULL"
             
@@ -507,7 +509,7 @@ class MysqlWrap:
         # add an id field if the key_field parameter is empty
         if not key_field or not len(key_field) > 0:
             keys = ["id "] + keys
-            datatypes = ["INT NOT NULL PRIMARY KEY"] + datatypes
+            datatypes = ["INT NOT NULL PRIMARY KEY AUTO_INCREMENT"] + datatypes
 
         # serialize data from dataframe
         sql = "CREATE TABLE {0} ({1})".format(table, ",".join([" ".join((key, datatype)) for key, datatype in zip(keys, datatypes)]))
@@ -565,7 +567,7 @@ class MysqlWrap:
         for record in records:
             data += [{key : value} for key, value in record.items()]
 
-        print(data)
+        #print(data)
 
         """ 
         records = [record data.to_dict(orient='records')]

@@ -78,4 +78,14 @@ print(testdb.describe("testcreate"))
 
 print(testdb.syncColumns("testcreate", data)) """
 
-testdb.insertDataFrame("testcreate", data)
+inputdict = {'Name': 'Avery Bradley', 'Team': 'Boston Celtics', 'Number': 0.0, 'Position': 'PG', 'Age': 25.0, 'Height': '6-2', 'Weight': 180.0, 'College': 'Texas', 'Salary' : 7730337.0}
+
+keys = " , ".join([item for item in inputdict.keys()])
+values = " , ".join(["'"+item+"'" if isinstance(item, str) else str(item) for item in inputdict.values()])
+
+testdb.query("INSERT INTO {0} ({1}) VALUES ({2})".format("testcreate", keys, values))
+testdb.commit()
+
+#testdb.insert("testcreate", inputdict)
+
+#testdb.insertDataFrame("testcreate", data)
