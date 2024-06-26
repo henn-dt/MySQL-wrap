@@ -204,8 +204,6 @@ class MysqlWrap:
 
         sql = "INSERT INTO %s (%s) VALUES(%s)" % (table, query[0], query[1])
 
-        print(sql)
-
         return self.query(sql, tuple(data.values())).rowcount
 
     def insertBatch(self, table, data):
@@ -461,9 +459,9 @@ class MysqlWrap:
         return datatypes
 
     """
-    createTable() - creates a Table using a DataFrame as the input
-    syncColumns() - adds missing columns and changes mismatched column types.
-    insertTable() - insert data in a Table using a DataFrame as the input, optionally adds missing columns and changes mismatched column types.
+    * createTable() - creates a Table using a DataFrame as the input
+    * syncColumns() - adds missing columns and changes mismatched column types.
+    * insertTable() - insert data in a Table using a DataFrame as the input, optionally adds missing columns and changes mismatched column types.
     updateTable() - updates a Table using a DataFrame as the input, optionally updates the columns.
     createOrInsertTable() - creates a Table if it doesn´t exists, insert data if it does, optionally updates the columns
     createOrUpdateTable() - creates a Table if it doesn´t exists, updates the records if it does, optionally updates the columns
