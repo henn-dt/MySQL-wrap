@@ -68,7 +68,6 @@ def getDataTypefromDType(DType : str) -> str:
 
 DataTypeLength = {
     "VARCHAR" : "255",
-    "FLOAT" : "10,5",
     "TINYINT" : "1"
 }
 
@@ -213,8 +212,8 @@ class MysqlWrap:
         """Insert multiple record"""
 
         query = self._serialize_batch_insert(data)
-        sql = "INSERT INTO %s (%s) VALUES %s" % (table, query[0], query[1])
 
+        sql = "INSERT INTO %s (%s) VALUES %s" % (table, query[0], query[1])
         flattened_values = [v for sublist in data for k, v in iter(sublist.items())]
 
         return self.query(sql, flattened_values).rowcount
@@ -534,27 +533,39 @@ class MysqlWrap:
         
         dest_columns = self.describe(table)
 
-        # check if all fields are included and with the same settings. 
-        if all(field in dest_columns for field in source_columns):
-            print("all columns in source are in the destination")
-            return
-        
         sql = "ALTER TABLE {0} ".format(table)
 
-        # adds missing keys
         missing_keys = list(set(source_columns.keys()) - set(dest_columns.keys()))
-        if len(missing_keys) > 0:
-            sql += " , ".join(["ADD COLUMN {0} {1} NULL".format(key, 
-                                                           source_columns[key]["Type"],
-                                                           ) for key in missing_keys])
-            
-        # changes mismatched datatypes
         mismatched_fields = [key for key 
                              in list(set(dest_columns.keys()).intersection(set(source_columns.keys() )))
                              if source_columns[key]["Type"] != dest_columns[key]["Type"]]
 
+        if not len(missing_keys) > 0 and not len(mismatched_fields) > 0:
+            print("all fields are already included in the destination, and all datatypes match")
+            return
+
+        """         # check if all fields are included and with the same settings. 
+        if all(field in dest_columns for field in source_columns):
+            print("all columns in the source data are in the destination") """
+
+      
+        # adds missing keys
+        if len(missing_keys) > 0:
+            print("destination is missing these fields {0}".format(missing_keys))
+            sql += " , ".join(["ADD COLUMN {0} {1} NULL".format(key, 
+                                                           source_columns[key]["Type"],                                                           ) for key in missing_keys])
+        else:
+            print("all fields are already defined in the destination")
+                
+        # changes mismatched datatypes
         if len(mismatched_fields) > 0:
+            print("changing data types in the destination: {0}".format( "\n".join(
+                ["Field name: {0} from type {1} to type {2}".format(
+            key, dest_columns[key]["Type"], source_columns[key]["Type"]) for key in mismatched_fields]
+            ))) 
             sql += " , ".join(["CHANGE COLUMN {0} {0} {1} NULL".format(key, source_columns[key]["Type"]) for key in mismatched_fields])
+        else:
+            print("all fields have matching types")
 
         return self.query(sql)
 
@@ -562,25 +573,7 @@ class MysqlWrap:
     def insertDataFrame(self, table, data : pd.DataFrame, updateColumns : bool = False):
         if updateColumns:
             self.syncColumns(table, data)
+        data = data.replace(np.nan, None)
         records = data.to_dict(orient='records')
-        data = []
-        for record in records:
-            data += [{key : value} for key, value in record.items()]
 
-        #print(data)
-
-        """ 
-        records = [record data.to_dict(orient='records')]
-
-        #flatten records, keep the order
-
-        data = [ {key : value} for key, value in record.items() for record in records ] 
- """
-#        data = [ { setMySqlFieldName(key) : value  for key, value in record.items()} for record in records]
-
-        
-
-#        data = [ {setMySqlFieldName(key) : value} for key, value in [ (record.items()) for record in records ] ]
-
-                
-        return self.insertBatch(table, data)
+        return self.insertBatch(table, records)

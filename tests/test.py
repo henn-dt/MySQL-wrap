@@ -1,7 +1,7 @@
 import logging
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(filename=__name__+'.log',  level=logging.INFO, format="%(asctime)s %(message)s", datefmt='%d/%m/%Y %I:%M:%S %p')
+logging.basicConfig(filename=__name__+".log",  level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%d/%m/%Y %I:%M:%S %p")
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -62,7 +62,7 @@ for dtype in list(data.dtypes):
  """
 # logger.info(testdb.createTable("testcreate" , data))
 
-sql = "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = 'column_name' "
+#sql = "SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = "column_name" "
 
 sql = "explain testcreate"
 
@@ -78,14 +78,16 @@ print(testdb.describe("testcreate"))
 
 print(testdb.syncColumns("testcreate", data)) """
 
-inputdict = {'Name': 'Avery Bradley', 'Team': 'Boston Celtics', 'Number': 0.0, 'Position': 'PG', 'Age': 25.0, 'Height': '6-2', 'Weight': 180.0, 'College': 'Texas', 'Salary' : 7730337.0}
+inputdict = {"Name": "Avery Bradley", "Team": "Boston Celtics", "Number": 0.0, "Position": "PG", "Age": 25.0, "Height": "6-2", "Weight": 180.0, "College": "Texas", "Salary" : 7730337.0}
 
-keys = " , ".join([item for item in inputdict.keys()])
-values = " , ".join(["'"+item+"'" if isinstance(item, str) else str(item) for item in inputdict.values()])
+#keys = " , ".join([item for item in inputdict.keys()])
+#values = " , ".join(["""+item+""" if isinstance(item, str) else str(item) for item in inputdict.values()])
 
-testdb.query("INSERT INTO {0} ({1}) VALUES ({2})".format("testcreate", keys, values))
-testdb.commit()
+#testdb.query("INSERT INTO {0} ({1}) VALUES ({2})".format("testcreate", keys, values))
+#testdb.commit()
 
 #testdb.insert("testcreate", inputdict)
+#testdb.commit()
 
-#testdb.insertDataFrame("testcreate", data)
+testdb.insertDataFrame("testcreate", data, True)
+testdb.commit()
