@@ -1,3 +1,4 @@
+import math
 import mysql.connector as mysql
 from collections import namedtuple
 from itertools import repeat
@@ -228,6 +229,8 @@ class MysqlWrap:
 
         values = tuple(data.values())
 
+
+
         return self.query(
             sql, values + where[1] if where and len(where) > 1 else values
         ).rowcount
@@ -323,9 +326,6 @@ class MysqlWrap:
             return True
         return False
     
-
-
-
     def _serialize_insert(self, data):
         """Format insert dict values into strings"""
         keys = ",".join(data.keys())
@@ -462,15 +462,16 @@ class MysqlWrap:
     * createTable() - creates a Table using a DataFrame as the input
     * syncColumns() - adds missing columns and changes mismatched column types.
     * insertTable() - insert data in a Table using a DataFrame as the input, optionally adds missing columns and changes mismatched column types.
-    updateTable() - updates a Table using a DataFrame as the input, optionally updates the columns.
-    createOrInsertTable() - creates a Table if it doesn´t exists, insert data if it does, optionally updates the columns
-    createOrUpdateTable() - creates a Table if it doesn´t exists, updates the records if it does, optionally updates the columns
-    getTable() - get all rows, return as DataTrame   
+    * updateOrInsertTable() - updates a Table using a DataFrame as the input, optionally updates the columns.
+    * createOrInsertTable() - creates a Table if it doesn´t exists, insert data if it does, optionally updates the columns
+    * createOrUpdateTable() - creates a Table if it doesn´t exists, updates the records if it does, optionally updates the columns
+    * getTable() - get all rows, return as DataTrame   
     """
     
     def getTable(self, table=None, fields='*', where=None, order=None, limit=None) -> pd.DataFrame:
-        """Get all results and return as a DataFrame
-
+        """
+        Get all results and return as a DataFrame
+        parameters:
             table = (str) table_name
             fields = (field1, field2 ...) list of fields to select
             where = ("parameterizedstatement", [parameters])
@@ -493,6 +494,14 @@ class MysqlWrap:
         return res_dataFrame
     
     def createTable(self, table, data : pd.DataFrame, key_field : str = None):
+        """
+        create a new table in the database using a DataFrame as the base.
+        Doesn´t fill in rows using the dataframe columns to create appropriate datatype.
+        If no key_field is specified, creates an "id" field types as Integer as the primary key. 
+        Doesn´t require commit
+        """
+
+
         # check if table exists
         if self._table_exist(table):
             print("table {0} already exists in the database".format(table))
@@ -514,21 +523,30 @@ class MysqlWrap:
         # create table
         return self.query(sql)
     
-    def syncColumns(self, table, data : pd.DataFrame, key_field : str = None):
+    def syncColumns(self, table, data : pd.DataFrame): #, key_field : str = None):
+        """
+        Checks that all the fields in the source DataFrame match the fields in the target Table.
+        Checks for name, adding missing fields, and datatype, changing mismatched types. 
+        Currently doesn´t change the primary key or its parameters, nor removes columns from the target Table which might be
+        missing in the source DataFrame. 
+        """
         # todo: check for primary keys, and sync primary keys. 
          
         keys = data.keys()
         datatypes = self._serialize_datatypes(data)
 
         source_columns = { setMySqlFieldName(key) : 
-                     {"Field" : setMySqlFieldName(key),
-                      "Type" : str(datatype).split()[0],
-                       "Null" : "NO" if key == key_field else "YES",
+                     {"Field" : setMySqlFieldName(key),                      
+                      "Type" : str(datatype).split()[0],}
+                                              for key, datatype in zip(keys, datatypes) }
+        
+        """ # we don´t need the other parameters until syncing key_field is implemented.                        
+                        "Null" : "NO" if key == key_field else "YES",
                         "Key" :  "PRI" if key == key_field else "",
                         "Default" : None,
-                        "Extra" : ""}
-                        for key, datatype in zip(keys, datatypes) }
-        
+                        "Extra" : ""
+                        """
+       
         dest_columns = self.describe(table)
 
         sql = "ALTER TABLE {0} ".format(table)
@@ -541,17 +559,11 @@ class MysqlWrap:
         if not len(missing_keys) > 0 and not len(mismatched_fields) > 0:
             print("all fields are already included in the destination, and all datatypes match")
             return
-
-        """         # check if all fields are included and with the same settings. 
-        if all(field in dest_columns for field in source_columns):
-            print("all columns in the source data are in the destination") """
-
-      
+        
         # adds missing keys
         if len(missing_keys) > 0:
             print("destination is missing these fields {0}".format(missing_keys))
-            sql += " , ".join(["ADD COLUMN {0} {1} NULL".format(key, 
-                                                           source_columns[key]["Type"],                                                           ) for key in missing_keys])
+            sql += " , ".join(["ADD COLUMN {0} {1} NULL".format(key, source_columns[key]["Type"],) for key in missing_keys])
         else:
             print("all fields are already defined in the destination")
                 
@@ -567,11 +579,92 @@ class MysqlWrap:
 
         return self.query(sql)
 
-
-    def insertDataFrame(self, table, data : pd.DataFrame, updateColumns : bool = False):
+    def insertFromDataFrame(self, table, data : pd.DataFrame, updateColumns : bool = False):
+        """
+        Insert new rows in the target table, derived from the input dataframe. 
+        Might require commit afterwards. 
+        parameters:
+            table: name of the target table
+            data: the source DataFrame
+            updateColumns: boolean, if True will sync column names before inserting the new rows
+        """
         if updateColumns:
             self.syncColumns(table, data)
         data = data.replace(np.nan, None)
         records = data.to_dict(orient='records')
 
         return self.insertBatch(table, records)
+
+
+    def insertOrUpdateFromDataFrame(self, table, data : pd.DataFrame, key_field : str, updateColumns : bool = False):
+        """
+        Will try to update records in the dataframe if rows already exists matching the value of the key_field.
+        If the key_field is not a unique value or part of the primary key it will run an update query with a 
+        "where" condition for each row, so it can get slow. In this case it will update *all* rows which fulfill the condition, in case
+        the values repeat. 
+        Might require commit. 
+        parameters:
+            table: name of the target table
+            data: the source DataFrame
+            key_field : name of the source column to use to upgrade rows
+            updateColumns: boolean, if True will sync column names before inserting the new rows            
+        """
+
+        if updateColumns:
+            self.syncColumns(table, data)
+
+        target_description = self.describe(table)
+        if key_field not in target_description.keys():
+            return print ("could not find key_field {0} in the target table")
+        
+        target_key_field = target_description[key_field]
+        data = data.replace(np.nan, None)
+        records = data.to_dict(orient='records')
+        # check if key used as key_field is primary or unique
+        if target_key_field["Key"].lower() in ["pri", "uni"]:
+            return [self.insertOrUpdate(table, record, key_field) for record in records]
+
+        # if not needs to run an update with a where condition
+        return [self.update(table, record, where= ["{0} = {1}".format(key_field, 
+                                                                      "\"{0}\"".format(record[key_field]) 
+                                                                      if target_key_field["Type"].startswith("VARCHAR") 
+                                                                       else record[key_field] )] ) 
+                                                                       for record in records]
+
+    def createOrInsertTable(self, table, data : pd.DataFrame, key_field : str = None, updateColumns : bool = False):
+        """
+        If it doesn´t exists, creates a new table, using the columns and dataypes in the DataFrame to create fields. 
+        If no key_field is specified, creates an "id" field types as Integer as the primary key. 
+
+        Insert new rows in the target table, derived from the input dataframe. 
+        Might require commit afterwards. 
+        parameters:
+            table: name of the target table
+            data: the source DataFrame
+            updateColumns: boolean, if True will sync column names before inserting the new rows
+        """
+
+        if not self._table_exist(table):
+            self.createTable(table, data, key_field)
+        return self.insertFromDataFrame(table, data, updateColumns)
+    
+    def createOrUpdateTable(self, table, data : pd.DataFrame, key_field, updateColumns : bool = False):
+        """
+        If it doesn´t exists, creates a new table, using the columns and dataypes in the DataFrame to create fields. 
+
+        Will try to update records in the dataframe if rows already exists matching the value of the key_field.
+        If the key_field is not a unique value or part of the primary key it will run an update query with a 
+        "where" condition for each row, so it can get slow. In this case it will update *all* rows which fulfill the condition, in case
+        the values repeat. 
+        Might require commit. 
+        parameters:
+            table: name of the target table
+            data: the source DataFrame
+            key_field : name of the source column to use to upgrade rows
+            updateColumns: boolean, if True will sync column names before inserting the new rows            
+        """
+
+        if not self._table_exist(table):
+            self.createTable(table, data, key_field)
+        return self.insertOrUpdateFromDataFrame(table, data, key_field, updateColumns)
+
