@@ -26,9 +26,9 @@ testdb = mysql(host = DB_HOST,
 
 logger.info(testdb.getTable("export_log"))
 
-logger.info(testdb._table_exist("export_log"))
+logger.info(testdb.tableExist("export_log"))
 
-logger.info(testdb._table_exist("test"))
+logger.info(testdb.tableExist("test"))
 
 data = pd.read_csv("https://media.geeksforgeeks.org/wp-content/uploads/nba.csv") 
 """ 
@@ -40,7 +40,7 @@ for dtype in list(data.dtypes):
 
 tablename = "testpandas"
 
-testdb.createOrInsertTable(tablename, data)
+testdb.createInsertTable(tablename, data)
 testdb.commit()
 
 data["Salary"] = 2000

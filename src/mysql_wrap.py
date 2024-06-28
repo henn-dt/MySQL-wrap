@@ -11,6 +11,7 @@ import numpy
 np = numpy
 
 
+
 """
     A very simple wrapper for mysql (mysql-connector) with some added Pandas integration functionalities.
 
@@ -28,15 +29,21 @@ np = numpy
         query()  - run a raw sql query
         commit() - commits a transaction for transactional engines
         leftJoin() - do an inner left join query and get results
+        - create database()
+        - clear records()
 
         pandas based methods:
 
         createTable() - creates a Table using a DataFrame as the input
+        syncColumns() - updates columns in the Table using the columns in the DataFrame as the source
         insertTable() - updates a Table using a DataFrame as the input
-        updateTable() - updates a Table using a DataFrame as the input, adds missing columns and changes mismatched column types.
-        createOrInsertTable() - creates a Table if it doesn´t exists, updates the records if it does
-        createOrUpdateTable() - creates a Table if it doesn´t exists, updates the records if it does, adds missing columns and chages mismatched column types
-        getTable() - get all rows, return as DataTrame       
+        insertOrUpdateTable() - updates a Table using a DataFrame as the input, adds missing columns and changes mismatched column types.
+        createInsertTable() - creates a Table if it doesn´t exists, updates the records if it does
+        createUpdateTable() - creates a Table if it doesn´t exists, updates the records if it does, adds missing columns and chages mismatched column types
+        getTable() - get all rows, return as DataFrame  
+        - copyTable()
+        - deleteTable()     
+        - renameColumns
 
     License: GNU GPLv2
 
@@ -50,6 +57,7 @@ np = numpy
     Emiliano Lupo
     June 2024
 """
+
 DTypeDict  = {
     "VARCHAR" : ['string'],
     "DATETIME" : [ np.datetime64, 'datetime' , 'datetime64', 'datetime64[ns, <tz>]'],
@@ -319,7 +327,7 @@ class MysqlWrap:
 
         # ===
 
-    def _table_exist(self, table : str):
+    def tableExist(self, table : str):
         sql = "SHOW TABLES LIKE '{0}'".format(table)
         self.cur.execute(sql)
         if self.cur.fetchone():
@@ -414,12 +422,6 @@ class MysqlWrap:
 # PANDAS METHODS
 
     
-    def _map_dtype(self, _dtype : str):
-        try : 
-            return next([key for key, value in DTypeDict.items() if str(_dtype).lower() in value])
-        except:
-            return "VARCHAR"   
-
     def _is_json(self, _varchar : str):
         if not _varchar.startswith(("{", "[")):
             return False
@@ -437,20 +439,26 @@ class MysqlWrap:
     
       
     def _serialize_datatypes(self, data : pd.DataFrame, key_field : str = None):
-        key_flag = False
+
         datatypes = []
 
         for items, dtype in zip(data.items(), list(data.dtypes)):
             key = items[0]
             column = items[1]
             datatype = getDataTypefromDType(str(dtype))
+
+
             if datatype == "VARCHAR" and self._is_json(column[column.first_valid_index()]):
                 datatype = "JSON"
-            if datatype in DataTypeLength.keys():
+
+            # handle datatype length
+            if datatype == "VARCHAR" and self._column_max_length(column) > 255:
+                datatype +="(MAX)"
+            elif datatype in DataTypeLength.keys():
                 datatype += "(%s)" % (DataTypeLength[datatype])
-            if not key_flag and key == key_field:
-                key_field = True
-                datatype += " NOT NULL PRIMARY KEY AUTO_INCREMENT"
+
+            if key == key_field:
+                datatype += " NOT NULL PRIMARY KEY"
             else:
                 datatype += " NULL"
             
@@ -503,7 +511,7 @@ class MysqlWrap:
 
 
         # check if table exists
-        if self._table_exist(table):
+        if self.tableExist(table):
             print("table {0} already exists in the database".format(table))
             return 
 
@@ -579,7 +587,7 @@ class MysqlWrap:
 
         return self.query(sql)
 
-    def insertFromDataFrame(self, table, data : pd.DataFrame, updateColumns : bool = False):
+    def insertFromDataFrame(self, table, data : pd.DataFrame, syncColumns : bool = False):
         """
         Insert new rows in the target table, derived from the input dataframe. 
         Might require commit afterwards. 
@@ -588,7 +596,7 @@ class MysqlWrap:
             data: the source DataFrame
             updateColumns: boolean, if True will sync column names before inserting the new rows
         """
-        if updateColumns:
+        if syncColumns:
             self.syncColumns(table, data)
         data = data.replace(np.nan, None)
         records = data.to_dict(orient='records')
@@ -596,11 +604,12 @@ class MysqlWrap:
         return self.insertBatch(table, records)
 
 
-    def insertOrUpdateFromDataFrame(self, table, data : pd.DataFrame, key_field : str, updateColumns : bool = False):
+    def insertOrUpdateFromDataFrame(self, table, data : pd.DataFrame, key_field : str, syncColumns : bool = False):
         """
         Will try to update records in the dataframe if rows already exists matching the value of the key_field.
         If the key_field is not a unique value or part of the primary key it will run an update query with a 
-        "where" condition for each row, so it can get slow. In this case it will update *all* rows which fulfill the condition, in case
+        "where" condition for each row, so it can get slow. 
+        In this case it will update *all* rows which fulfill the condition, in case
         the values repeat. 
         Might require commit. 
         parameters:
@@ -610,7 +619,7 @@ class MysqlWrap:
             updateColumns: boolean, if True will sync column names before inserting the new rows            
         """
 
-        if updateColumns:
+        if syncColumns:
             self.syncColumns(table, data)
 
         target_description = self.describe(table)
@@ -625,13 +634,14 @@ class MysqlWrap:
             return [self.insertOrUpdate(table, record, key_field) for record in records]
 
         # if not needs to run an update with a where condition
+        # a bit dangerous - make it a separate method?
         return [self.update(table, record, where= ["{0} = {1}".format(key_field, 
                                                                       "\"{0}\"".format(record[key_field]) 
                                                                       if target_key_field["Type"].startswith("VARCHAR") 
                                                                        else record[key_field] )] ) 
                                                                        for record in records]
 
-    def createOrInsertTable(self, table, data : pd.DataFrame, key_field : str = None, updateColumns : bool = False):
+    def createInsertTable(self, table, data : pd.DataFrame, key_field : str = None, updateColumns : bool = False):
         """
         If it doesn´t exists, creates a new table, using the columns and dataypes in the DataFrame to create fields. 
         If no key_field is specified, creates an "id" field types as Integer as the primary key. 
@@ -644,11 +654,11 @@ class MysqlWrap:
             updateColumns: boolean, if True will sync column names before inserting the new rows
         """
 
-        if not self._table_exist(table):
+        if not self.tableExist(table):
             self.createTable(table, data, key_field)
         return self.insertFromDataFrame(table, data, updateColumns)
     
-    def createOrUpdateTable(self, table, data : pd.DataFrame, key_field, updateColumns : bool = False):
+    def createUpdateTable(self, table, data : pd.DataFrame, key_field, updateColumns : bool = False):
         """
         If it doesn´t exists, creates a new table, using the columns and dataypes in the DataFrame to create fields. 
 
@@ -664,7 +674,7 @@ class MysqlWrap:
             updateColumns: boolean, if True will sync column names before inserting the new rows            
         """
 
-        if not self._table_exist(table):
+        if not self.tableExist(table):
             self.createTable(table, data, key_field)
         return self.insertOrUpdateFromDataFrame(table, data, key_field, updateColumns)
 
