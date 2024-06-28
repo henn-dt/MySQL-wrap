@@ -15,7 +15,18 @@ DB_HOST = os.environ.get("DATABASE_SERVER")
 DB_USER = os.environ.get("DATABASE_USER")
 DB_PW = os.environ.get("DATABASE_PASSWORD")
 
-from src.mysql_wrap import MysqlWrap as mysql
+from src.mysql_wrap.mysqlwrap import MysqlWrap as mysql
+from src.mysql_wrap.mysqlwrap import ConnectionOptions
+
+options = ConnectionOptions(host = DB_HOST,
+           db = "test",
+           user=DB_USER,
+           passwd = DB_PW,
+           keep_alive = True,)
+
+print(options)
+
+testdb = mysql(**options)
 
 
 testdb = mysql(host = DB_HOST,
@@ -45,7 +56,7 @@ testdb.commit()
 
 data["Salary"] = 2000
 
-testdb.insertOrUpdateDataFrame(tablename, data, "Name")
+testdb.insertOrUpdateFromDataFrame(tablename, data, "Name")
 testdb.commit()
 
 

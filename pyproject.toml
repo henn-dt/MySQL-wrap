@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mysql_wrap"
-version = "1.0.1"
+version = "1.1.3"
 dependencies = ["pandas", "mysql-connector-python"]
 authors = [
   { name="emiliano lupo", email="emiliano.lupo@henn.com" },
@@ -17,7 +17,10 @@ classifiers = [
     "License :: Other/Proprietary License",
     "Operating System :: OS Independent",
 ]
+keywords = ["mysql", "pandas"]
 
 [project.urls]
 "Homepage" = "https://github.com/henn-dt/MySQL-wrap"
 "Bug Tracker" = "https://github.com/henn-dt/MySQL-wrap/issues"
+
+

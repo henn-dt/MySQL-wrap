@@ -1,8 +1,7 @@
-import math
 import mysql.connector as mysql
 from collections import namedtuple
 from itertools import repeat
-from typing import Any, Optional, Set, Callable, Iterator
+
 import json
 
 import pandas as pd
@@ -96,15 +95,15 @@ class ConnectionOptions(dict):
             )
         """
     def __init__(self, db, user, passwd , host = "localhost", port = 3306, charset = "utf8", keep_alive = True, ssl = False, autocommit = False ):
-        self.db = db
-        self.user = user
-        self.passwd = passwd
-        self.host = host
-        self.port = port
-        self.charset = charset
-        self.keep_alive = keep_alive
-        self.ssl = ssl
-        self.autocommit = autocommit
+        self['db'] = db
+        self['user'] = user
+        self['passwd'] = passwd
+        self['host'] = host
+        self['port'] = port
+        self['charset'] = charset
+        self['keep_alive'] = keep_alive
+        self['ssl'] = ssl
+        self['autocommit'] = autocommit
 
 
 class MysqlWrap:

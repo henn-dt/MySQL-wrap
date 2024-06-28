@@ -2,7 +2,7 @@
 A wrapper for Python Mysqldb with pandas functionality.
 
 - Emiliano Lupo @HENN, June 2024
-- Documentation https://pypi.org/project/mysql-wrap/
+- Documentation https://pypi.org/project/mysqlwrap/
 - License: GPL v2
 
 Built on top of the SimpleMysql package available at https://github.com/knadh/simplemysql
@@ -10,7 +10,7 @@ Built on top of the SimpleMysql package available at https://github.com/knadh/si
 # Installation
 with pip:
 
-pip install mysql-wrap
+pip install mysql_wrap
 
 from source:
 
@@ -19,21 +19,24 @@ from source:
 # Usage
 ## For normal connection
 ```python
-from simplemysql import SimpleMysql
+from mysql_wrap import MysqlWrap, ConnectionOptions
 
-db = SimpleMysql(
+options = ConnectionOptions(
 	host="127.0.0.1",
 	db="mydatabase",
 	user="username",
 	passwd="password",
 	keep_alive=True # try and reconnect timedout mysql connections?
 )
+
+db = MysqlWrap(**options)
 ```
+
 ## For SSL Connection
 ```python
-from simplemysql import SimpleMysql
+from mysql_wrap import MysqlWrap
 
-db = SimpleMysql(
+db = MysqlWrap(
     host="127.0.0.1",
     db="mydatabase",
     user="username",
