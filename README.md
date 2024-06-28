@@ -1,11 +1,20 @@
 # mysql_wrap
 A wrapper for Python Mysqldb with pandas functionality.
 
-Built on top of the SimpleMysql package available at https://github.com/knadh/simplemysql
-
 - Emiliano Lupo @HENN, June 2024
+- Documentation https://pypi.org/project/mysql-wrap/
 - License: GPL v2
 
+Built on top of the SimpleMysql package available at https://github.com/knadh/simplemysql
+
+# Installation
+with pip:
+
+pip install mysql-wrap
+
+from source:
+
+ python -m pip install .
 
 # Usage
 ## For normal connection
