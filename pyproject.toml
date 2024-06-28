@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mysql_wrap"
-version = "0.0.1"
+version = "1.0.0"
 dependencies = ["pandas", "mysql-connector-python"]
 authors = [
   { name="emiliano lupo", email="emiliano.lupo@henn.com" },
